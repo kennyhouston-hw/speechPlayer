@@ -110,5 +110,4 @@
     utterance.lang = 'ru-RU';
     synth.speak(utterance);
   }
-.
 });

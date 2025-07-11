@@ -12,7 +12,7 @@
   let fullText = '';
 
   // Озвучивание определенных классов и исключения
-  const classesToRead = ['toc-header','t225','t004.t-text','t508','t513.t-section__title', 't513__time', 't513__title','t431'];
+  const classesToRead = ['t220__text','t225','t004.t-text','t508','t513.t-section__title', 't513__time', 't513__title','t431'];
   const classesToExclude = ['uc-ctgr-link.t-text'];
 
   // Собираем текст

@@ -90,6 +90,7 @@
 @media screen and (max-width:960px){
     #speechWrapper {
         max-width: 600px;
+        display:none;
     }
     
     #speechPlayer {

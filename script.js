@@ -3,7 +3,7 @@
 const classesToRead    = ['t220__text','t225','t004','t508','t513.t-section__title',
                           't513__time','t513__title','t431','t195__text',
                           't544__title','t544__descr','t157__text'];
-const classesToExclude = ['uc-ctgr-link.t004'];
+const classesToExclude = ['uc-ctgr-link'];
 
 document.addEventListener('DOMContentLoaded', () => {
   const playBtn   = document.getElementById('playPauseBtn');

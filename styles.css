@@ -9,11 +9,12 @@
   font-family: 'Manrope', serif;
   font-weight: 400;
 }
-    
-#speechTitle{
+
+#speechTitle {
   color: #6b7280;
   font-size: 14px;
   line-height: 20px;
+  margin: 0;
 }
     
 #speechPlayer {
@@ -24,7 +25,17 @@
   border-radius: 99px;
   width: 100%;
   max-width: 736px; /* или любая другая ширина */
-  }
+}
+
+.word {
+  display: inline-block;
+}
+
+.word.highlight {
+  background-color: yellow;
+}
+
+
   
 #playPauseBtn {
   font-size: 20px;

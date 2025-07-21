@@ -1,113 +1,99 @@
-  document.addEventListener('DOMContentLoaded', function () {
-  const playPauseBtn = document.getElementById('playPauseBtn');
-  const playPauseIcon = playPauseBtn.querySelector('i'); 
-  const progressBarContainer = document.getElementById('progressBarContainer');
-  const progressFill = document.getElementById('progressFill');
 
-  const ICON_PLAY_CLASS = 'icon-play';
-  const ICON_PAUSE_CLASS = 'icon-pause';
+/* Классы для обработки и исключения */
+const classesToRead    = ['t220__text','t225','t004','t508','t513.t-section__title',
+                          't513__time','t513__title','t431','t195__text',
+                          't544__title','t544__descr','t157__text'];
+const classesToExclude = ['uc-ctgr-link.t004'];
 
-  const synth = window.speechSynthesis;
-  let utterance = null;
+document.addEventListener('DOMContentLoaded', () => {
+  const playBtn   = document.getElementById('playPauseBtn');
+  const playIcon  = playBtn.querySelector('i');
+  const progressC = document.getElementById('progressBarContainer');
+  const progressF = document.getElementById('progressFill');
+  const synth     = window.speechSynthesis;
+
+  const ICON_PLAY  = 'icon-play';
+  const ICON_PAUSE = 'icon-pause';
+
+  let utter   = null;
   let fullText = '';
+  let startOffset = 0;      
 
-  // Озвучивание определенных классов и исключения
-  const classesToRead = ['t220__text','t225','t004','t508','t513.t-section__title', 't513__time', 't513__title','t431','t195__text','t544__title','t544__descr', 't157__text'];
-  const classesToExclude = ['uc-ctgr-link.t004'];
+  /* Собираем и кэшируем текст*/
+  function buildSelector(list) {
+    return list.map(cls => cls.split(/\s+/).map(c => `[class~="${c}"]`).join('')).join(',');
+  }
+  function collectText() {
+    const readSel = buildSelector(classesToRead);
+    const skipSel = buildSelector(classesToExclude);
+    const nodes   = document.querySelectorAll(readSel);
+    const skipSet = new Set(document.querySelectorAll(skipSel));
 
-  // Собираем текст
-  function getTextToSpeak() {
-    const readSelector = classesToRead.map(cls => {
-      if (cls.includes(' ')) {
-        const parts = cls.split(' ');
-        return parts.map(part => `.${part}`).join(' ');
-      } else {
-        return `.${cls}`;
-      }
-    }).join(', ');
-
-    const potentialElements = document.querySelectorAll(readSelector);
-    let collectedText = '';
-    potentialElements.forEach(element => {
-      const hasExcludedClass = classesToExclude.some(cls => {
-        if (cls.includes(' ')) {
-          const parts = cls.split(' ');
-          return element.closest(parts.map(part => `.${part}`).join(' '));
-        } else {
-          return element.closest(`.${cls}`);
-        }
-      });
-      
-      if (!hasExcludedClass) {
-        collectedText += element.textContent.trim() + ' ';
-      }
+    let out = '';
+    nodes.forEach(n => {
+      if (!skipSet.has(n) && !n.closest(skipSel)) out += n.textContent.trim() + ' ';
     });
-    return collectedText;
+    return out.trim();
   }
 
-  // Логика плеера
-  playPauseBtn.addEventListener('click', () => {
+  /* Кнопка Play/Pause */
+  function setUI(state) {
+    playIcon.classList.remove(ICON_PLAY, ICON_PAUSE);
+    playIcon.classList.add(state === 'pause' ? ICON_PAUSE : ICON_PLAY);
+    playBtn.title = state === 'pause' ? 'Пауза' : 'Воспроизвести';
+  }
+  function disableBtn(d = true) { playBtn.disabled = d; }
+  function setProgress(p) { progressF.style.width = Math.min(p, 100) + '%'; }
+
+  /* Обработчик вопспроизведения и перемотки */
+  function speakFrom(offset = 0) {
+    disableBtn(true);
+    synth.cancel();
+    setTimeout(() => {
+      fullText = fullText || collectText();
+      if (!fullText) { console.log('Нет текста'); setUI('stop'); disableBtn(false); return; }
+
+      const textToSpeak = fullText.slice(offset);
+      utter = new SpeechSynthesisUtterance(textToSpeak);
+      utter.lang = 'ru-RU';
+
+      utter.onstart = () => { setUI('pause'); disableBtn(false); };
+      utter.onend   = () => { setUI('stop'); setProgress(100);
+                              setTimeout(() => setProgress(0), 300);
+                              startOffset = 0; };
+      utter.onboundary = e => {
+        if (e.name === 'word') {
+          const globalIndex = offset + e.charIndex + e.charLength;
+          setProgress(globalIndex / fullText.length * 100);
+        }
+      };
+
+      synth.speak(utter);
+    }, 50);
+  }
+
+  /* Обработчки событий кнопки */
+  playBtn.addEventListener('click', () => {
     if (synth.speaking && !synth.paused) {
       synth.pause();
-      playPauseIcon.classList.remove(ICON_PAUSE_CLASS);
-      playPauseIcon.classList.add(ICON_PLAY_CLASS);
-      playPauseBtn.title = 'Воспроизвести';
-    }
-    else if (synth.paused) {
+      setUI('play');
+    } else if (synth.paused) {
       synth.resume();
-      playPauseIcon.classList.remove(ICON_PLAY_CLASS);
-      playPauseIcon.classList.add(ICON_PAUSE_CLASS);
-      playPauseBtn.title = 'Пауза';
-    }
-    else {
-      fullText = getTextToSpeak();
-      if (fullText.length > 0) {
-        startPlayback(fullText);
-      } else {
-        console.log('Не найден текст для озвучивания.');
-      }
+      setUI('pause');
+    } else {
+      fullText = '';          
+      startOffset = 0;
+      speakFrom(0);
     }
   });
 
-  function startPlayback(text) {
-    synth.cancel();
+  /* Обработчик прогрессбара */
+  progressC.addEventListener('click', e => {
+    const rect = progressC.getBoundingClientRect();
+    const ratio = (e.clientX - rect.left) / rect.width;
+    const newOffset = Math.floor(ratio * fullText.length);
 
-    utterance = new SpeechSynthesisUtterance(text);
-    
-    utterance.onstart = () => {
-        playPauseIcon.classList.remove(ICON_PLAY_CLASS);
-        playPauseIcon.classList.add(ICON_PAUSE_CLASS);
-        playPauseBtn.title = 'Пауза';
-    };
-
-    utterance.onend = () => {
-      playPauseIcon.classList.remove(ICON_PAUSE_CLASS);
-      playPauseIcon.classList.add(ICON_PLAY_CLASS);
-      playPauseBtn.title = 'Воспроизвести';
-      progressFill.style.width = '0%'; // Сброс прогресса в конце
-    };
-
-    utterance.onpause = () => {
-      playPauseIcon.classList.remove(ICON_PAUSE_CLASS);
-      playPauseIcon.classList.add(ICON_PLAY_CLASS);
-      playPauseBtn.title = 'Воспроизвести';
-    };
-
-    utterance.onresume = () => {
-      playPauseIcon.classList.remove(ICON_PLAY_CLASS);
-      playPauseIcon.classList.add(ICON_PAUSE_CLASS);
-      playPauseBtn.title = 'Пауза';
-    };
-
-    // Обновление прогрессбара
-    utterance.onboundary = (event) => {
-      if (event.name === 'word') {
-        const progress = (event.charIndex + event.charLength) / fullText.length * 100;
-        progressFill.style.width = `${progress}%`;
-      }
-    };
-
-    utterance.lang = 'ru-RU';
-    synth.speak(utterance);
-  }
+    startOffset = newOffset;
+    speakFrom(newOffset);
+  });
 });

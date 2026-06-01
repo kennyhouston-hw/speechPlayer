@@ -1,6 +1,6 @@
 
 /* Классы для обработки и исключения */
-const classesToRead    = ['t220__text','t225','t004','t508','t513.t-section__title',
+const classesToRead    = ['t220__text','t225','t004','t508','t513 t-section__title',
                           't513__time','t513__title','t431','t195__text',
                           't544__title','t544__descr','t157__text','hljs'];
 const classesToExclude = ['uc-ctgr-link'];
@@ -25,7 +25,8 @@ class SpeechPlayer {
     this.utter = null;
     this.fullText = '';
     this.startOffset = 0;
-    this.voices = [];
+    this.wordSpans = [];
+    this.domWrapped = false;
 
     this.init();
   }
@@ -39,25 +40,26 @@ class SpeechPlayer {
   }
 
   getWordIndexAtChar(charIndex) {
-    const words = Array.from(document.querySelectorAll('.word'));
     let currentChar = 0;
-    for (let i = 0; i < words.length; i++) {
-      const word = words[i].textContent;
-      if (charIndex >= currentChar && charIndex < currentChar + word.length) {
+    for (let i = 0; i < this.wordSpans.length; i++) {
+      const wordLen = this.wordSpans[i].textContent.length;
+      if (charIndex >= currentChar && charIndex < currentChar + wordLen) {
         return i;
       }
-      currentChar += word.length + 1; // +1 for the space
+      currentChar += wordLen + 1; // +1 for the space
     }
     return -1;
   }
 
-
   buildSelector(list) {
-    return list.map(cls => cls.split(/\s+/).map(c => `[class~="${c}"]`).join('')).join(',');
+    return list.map(cls => {
+      // Составной селектор вида "t513 t-section__title" → два класса на одном элементе
+      return cls.trim().split(/\s+/).map(c => `[class~="${c}"]`).join('');
+    }).join(',');
   }
 
   collectText() {
-    if (this.fullText) return this.fullText;
+    if (this.domWrapped) return this.fullText;
 
     const readSel = this.buildSelector(classesToRead);
     const skipSel = this.buildSelector(classesToExclude);
@@ -92,14 +94,16 @@ class SpeechPlayer {
       }
     });
 
-    this.fullText = Array.from(document.querySelectorAll('.word')).map(el => el.textContent).join(' ').replace(/\s+/g, ' ').trim();
+    this.wordSpans = Array.from(document.querySelectorAll('.word'));
+    this.fullText = this.wordSpans.map(el => el.textContent).join(' ').replace(/\s+/g, ' ').trim();
+    this.domWrapped = true;
     return this.fullText;
   }
 
   setUI(state) {
     this.playIcon.classList.remove(this.ICON_PLAY, this.ICON_PAUSE);
-    this.playIcon.classList.add(state === 'pause' ? this.ICON_PAUSE : this.ICON_PLAY);
-    this.playBtn.title = state === 'pause' ? 'Пауза' : 'Воспроизвести';
+    this.playIcon.classList.add(state === 'playing' ? this.ICON_PAUSE : this.ICON_PLAY);
+    this.playBtn.title = state === 'playing' ? 'Пауза' : 'Воспроизвести';
   }
 
   disableBtn(d = true) {
@@ -110,40 +114,45 @@ class SpeechPlayer {
     this.progressF.style.width = Math.min(p, 100) + '%';
   }
 
+  clearHighlight() {
+    this.wordSpans.forEach(span => span.classList.remove('highlight'));
+  }
+
   speakFrom(offset = 0) {
     this.disableBtn(true);
     this.synth.cancel();
+
+    // Небольшая задержка нужна: cancel() асинхронный в некоторых браузерах
     setTimeout(() => {
       this.collectText();
       if (!this.fullText) {
         console.log('Нет текста');
-        this.setUI('stop');
+        this.setUI('stopped');
         this.disableBtn(false);
         return;
       }
 
       const textToSpeak = this.fullText.slice(offset);
       this.utter = new SpeechSynthesisUtterance(textToSpeak);
+      this.utter.lang = 'ru-RU';
 
       this.utter.onstart = () => {
-        this.setUI('pause');
+        this.setUI('playing');
         this.disableBtn(false);
       };
       this.utter.onend = () => {
-        this.setUI('stop');
+        this.setUI('stopped');
         this.setProgress(100);
         setTimeout(() => this.setProgress(0), 300);
         this.startOffset = 0;
-        const wordSpans = document.querySelectorAll('.word');
-        wordSpans.forEach(span => span.classList.remove('highlight'));
+        this.clearHighlight();
       };
       this.utter.onboundary = e => {
         if (e.name === 'word') {
           const wordIndex = this.getWordIndexAtChar(e.charIndex + offset);
           if (wordIndex !== -1) {
-            const wordSpans = document.querySelectorAll('.word');
-            wordSpans.forEach(span => span.classList.remove('highlight'));
-            const wordSpan = document.getElementById(`word-${wordIndex}`);
+            this.clearHighlight();
+            const wordSpan = this.wordSpans[wordIndex];
             if (wordSpan) {
               wordSpan.classList.add('highlight');
             }
@@ -160,18 +169,19 @@ class SpeechPlayer {
   handlePlayPause() {
     if (this.synth.speaking && !this.synth.paused) {
       this.synth.pause();
-      this.setUI('play');
+      this.setUI('paused');
     } else if (this.synth.paused) {
       this.synth.resume();
-      this.setUI('pause');
+      this.setUI('playing');
     } else {
-      this.fullText = ''; // Reset cache
       this.startOffset = 0;
       this.speakFrom(0);
     }
   }
 
   handleProgressClick(e) {
+    if (!this.fullText) return;
+
     const rect = this.progressC.getBoundingClientRect();
     const ratio = (e.clientX - rect.left) / rect.width;
     const newOffset = Math.floor(ratio * this.fullText.length);

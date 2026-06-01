@@ -95,7 +95,7 @@ class SpeechPlayer {
     });
 
     this.wordSpans = Array.from(document.querySelectorAll('.word'));
-    this.fullText = this.wordSpans.map(el => el.textContent).join(' ').replace(/\s+/g, ' ').trim();
+    this.fullText = this.wordSpans.map(el => el.textContent).join(' ').replace(/[«»]/g, '').replace(/\s+/g, ' ').trim();
     this.domWrapped = true;
     return this.fullText;
   }
